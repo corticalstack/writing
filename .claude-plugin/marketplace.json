@@ -1,5 +1,6 @@
 {
   "name": "writing",
+  "description": "Writing and content-creation skills for Claude Code.",
   "owner": {
     "name": "corticalstack"
   },
