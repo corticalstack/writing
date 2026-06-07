@@ -1,0 +1,18 @@
+{
+  "name": "writing",
+  "version": "0.1.0",
+  "description": "Writing and content-creation skills for Claude Code: changelog generation, research-backed content writing, and AI-writing humanization.",
+  "author": {
+    "name": "corticalstack"
+  },
+  "homepage": "https://github.com/corticalstack/writing",
+  "repository": "https://github.com/corticalstack/writing",
+  "license": "MIT",
+  "keywords": [
+    "skills",
+    "writing",
+    "content",
+    "agent-skills"
+  ],
+  "skills": "./.claude/skills/"
+}
