@@ -1,6 +1,6 @@
 {
   "name": "writing",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Writing and content-creation skills for Claude Code: changelog generation, research-backed content writing, explainer animations, and AI-writing humanization.",
   "author": {
     "name": "corticalstack"

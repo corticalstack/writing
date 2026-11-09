@@ -9,11 +9,12 @@
 <style>
 /* =====================================================================================
    EXPLAINER ANIMATION TEMPLATE. One file, no dependencies.
-   Three regions to change, each marked EDIT:
-     1. the colours for your actors (just below)
-     2. the title block and the stage (the SVG in the body)
-     3. the building blocks and the script (the chapters, near the bottom)
-   Leave the sections marked ENGINE and PLAYER as they are unless you are adding a verb.
+   Every place to change is marked EDIT. There are seven: the tab title, the colours,
+   the legend, the title block, the stage, the pieces added to the stage in code, and
+   the script.
+   Keep the building-block functions (h, badge, chip, pill, detailCard) and add your own
+   beside them. Leave the sections marked ENGINE, READING TIME, PLAYER and SELF-CHECK as
+   they are unless you are adding a verb.
    The demo content explains a cache-aside read. Replace all of it.
    ================================================================================== */
 :root {
@@ -141,8 +142,9 @@ svg .mono { font-family: var(--mono); }
   </div>
 
   <div id="stage-wrap">
-<!-- EDIT: the stage. Coordinates are in a fixed 1600 x 840 space. Give every actor a panel, leave gaps between
-     panels for connectors, and mark anything that should start hidden with class="h". -->
+<!-- EDIT: the stage, and its aria-label. Coordinates are in a fixed 1600 x 840 space. Give every actor a panel.
+     Make the gap between two panels at least as wide as the widest message that travels between them, and keep
+     44 clear above the top row of panels for the summary labels. Mark anything that starts hidden with class="h". -->
 <svg id="stage" viewBox="0 0 1600 840" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Animated walk-through of a cache-aside read">
   <defs>
     <filter id="glowF" x="-30%" y="-30%" width="160%" height="160%">
@@ -284,10 +286,12 @@ function h(tag, attrs = {}, ...kids) {
   return el;
 }
 // A step number in a circle, placed beside the connector it belongs to. Its id is b1, b2, ...
-function badge(n, x, y) {
-  return h('g', {id: `b${n}`, class: 'badge h'}, h('circle', {cx: x, cy: y, r: 12}), h('text', {x, y: y + 4.5, text: String(n)}));
+// Pass an id when the same number appears on a second connector, for example badge(6, 1370, 505, 'b6-stolen').
+function badge(n, x, y, id = `b${n}`) {
+  return h('g', {id, class: 'badge h'}, h('circle', {cx: x, cy: y, r: 12}), h('text', {x, y: y + 4.5, text: String(n)}));
 }
 // A small labelled token for a thing that travels: a ticket, a row, a key.
+// Give it an id only when it travels alone. A chip used as a pill's tail must not have one.
 function chip(label, color, {id = null, w = 92} = {}) {
   const attrs = {class: id ? 'chip h' : 'chip', style: `--c:${color}`, 'data-w': w};
   if (id) attrs.id = id;
@@ -311,23 +315,25 @@ function pill(id, text, color, w, {mono = false, tail = null, cls = '', x = null
 // A large card for looking closely at one thing: a title bar, then rows of [name, value, plain-words note].
 // A row may end with [.., tagText, tagColor] for a small tag that starts hidden.
 // Row ids are `${id}-${name}`; tag ids are `${id}-${name}-tag`.
-function detailCard(id, title, sub, color, rows) {
-  const H = 60 + rows.length * 40, y0 = -H / 2;
+// w is the card's width. nameW is the width of the name column: 72 fits about 8 characters,
+// so widen both for long names, for example {w: 480, nameW: 130} for code_verifier.
+function detailCard(id, title, sub, color, rows, {w = 400, nameW = 72} = {}) {
+  const H = 60 + rows.length * 40, y0 = -H / 2, half = w / 2, x1 = -half + 18, x2 = x1 + nameW;
   const g = h('g', {id, class: 'dcard h', style: `--c:${color}`});
-  g.append(h('rect', {class: 'dc-bg', x: -200, y: y0, width: 400, height: H, rx: 14}));
-  g.append(h('path', {class: 'dc-head', d: `M-200 ${y0 + 14}a14 14 0 0 1 14-14h372a14 14 0 0 1 14 14v26h-400z`}));
-  g.append(h('text', {class: 'dc-title', x: -182, y: y0 + 26, text: title}));
-  g.append(h('text', {class: 'dc-sub', x: 182, y: y0 + 26, 'text-anchor': 'end', text: sub}));
+  g.append(h('rect', {class: 'dc-bg', x: -half, y: y0, width: w, height: H, rx: 14}));
+  g.append(h('path', {class: 'dc-head', d: `M${-half} ${y0 + 14}a14 14 0 0 1 14-14h${w - 28}a14 14 0 0 1 14 14v26h${-w}z`}));
+  g.append(h('text', {class: 'dc-title', x: x1, y: y0 + 26, text: title}));
+  g.append(h('text', {class: 'dc-sub', x: half - 18, y: y0 + 26, 'text-anchor': 'end', text: sub}));
   rows.forEach(([name, value, note, tagText, tagColor], i) => {
     const y = y0 + 68 + i * 40;
     g.append(h('g', {id: `${id}-${name}`, class: 'row'},
-      h('rect', {class: 'hl', x: -192, y: y - 17, width: 384, height: 38, rx: 6}),
-      h('text', {class: 'dc-k mono', x: -182, y, text: name}),
-      h('text', {class: 'dc-v mono', x: -110, y, text: value}),
-      h('text', {class: 'dc-m', x: -110, y: y + 16, text: note})));
+      h('rect', {class: 'hl', x: -half + 8, y: y - 17, width: w - 16, height: 38, rx: 6}),
+      h('text', {class: 'dc-k mono', x: x1, y, text: name}),
+      h('text', {class: 'dc-v mono', x: x2, y, text: value}),
+      h('text', {class: 'dc-m', x: x2, y: y + 16, text: note})));
     if (tagText) g.append(h('g', {id: `${id}-${name}-tag`, class: 'tag h', style: `--tc:${tagColor || 'var(--ok)'}`},
-      h('rect', {x: 112, y: y - 14, width: 78, height: 22, rx: 5}),
-      h('text', {x: 151, y: y + 1.5, text: tagText})));
+      h('rect', {x: half - 88, y: y - 14, width: 78, height: 22, rx: 5}),
+      h('text', {x: half - 49, y: y + 1.5, text: tagText})));
   });
   return g;
 }
@@ -340,11 +346,12 @@ $('#packets').append(
   pill('pk-miss', 'miss', 'var(--bad)', 90, {cls: 'bad'}),
   pill('pk-sql', 'SELECT * FROM products WHERE id = 42', 'var(--app)', 330, {mono: true}),
   pill('pk-row', '1 row', 'var(--db)', 90, {tail: chip('row', 'var(--row)')}),
-  pill('pk-set', 'SET products:42 · TTL 300 s', 'var(--app)', 250, {mono: true, tail: chip('row', 'var(--row)')}),
+  pill('pk-set', 'SET products:42 · TTL 300 s', 'var(--app)', 236, {mono: true, tail: chip('row', 'var(--row)')}),
   pill('pk-hit', 'hit', 'var(--ok)', 80, {cls: 'good', tail: chip('row', 'var(--row)')}),
-  pill('rc-app', 'decides where to read from', 'var(--app)', 250, {x: 310, y: 50}),
-  pill('rc-cache', 'stores only what the app puts in it', 'var(--cache)', 300, {x: 1220, y: 50}),
-  pill('rc-db', 'stays the source of truth', 'var(--db)', 240, {x: 1220, y: 450}),
+  // Pinned labels for the summary: centred 24 above the panel they describe, so they never sit on its title.
+  pill('rc-app', 'decides where to read from', 'var(--app)', 250, {x: 310, y: 26}),
+  pill('rc-cache', 'stores only what the app puts in it', 'var(--cache)', 300, {x: 1220, y: 26}),
+  pill('rc-db', 'stays the source of truth', 'var(--db)', 240, {x: 1220, y: 426}),
 );
 $('#cards').append(
   detailCard('card-entry', 'CACHE ENTRY', 'stored by the app', 'var(--cache)', [
@@ -366,7 +373,7 @@ const EASE = {
   back: p => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); },
 };
 const nodes = new Map();
-const tweens = [], flags = [], caps = [], chapters = [], missing = [];
+const tweens = [], flags = [], caps = [], chapters = [], missing = [], journeys = [];
 
 function node(el) {
   let n = nodes.get(el);
@@ -409,7 +416,9 @@ const drawL = (t, s, d = .9) => { tw(t, s, {d: 1}, d, 'io'); fx(t + d, s, 'done'
 const undraw = (t, s) => { set(t, s, {d: 0}); fx(t, s, 'done', false); };
 // trip: something travels along a motion path, then fades out unless {keep: true}. {rev: true} travels backwards.
 function trip(t, s, pathSel, d, opts = {}) {
+  const n0 = tweens.length;
   along(t, s, pathSel, d, opts);
+  if (tweens.length > n0) journeys.push(tweens[tweens.length - 1]);
   show(t, s, .3);
   if (opts.keep !== true) hide(t + d + .05, s, .35);
 }
@@ -425,15 +434,16 @@ function chapter(part, title, nums, dur, build, label) {
 }
 // overview: the opening chapter. The title block is up and the top bar is hidden. Each selector appears
 // once the one before it has had time to be read; the first (the subtitle) gets a fixed two seconds.
-function overview(sels, wps = 3.5) {
+// Options: wps (reading pace for the points), title and label (what the caption bar shows).
+function overview(sels, {wps = 3.5, title = 'The use case', label = 'Overview'} = {}) {
   let t = .6;
   const at = sels.map((s, i) => { const t0 = t; t += i === 0 ? 2 : $(s).textContent.split(/\s+/).filter(Boolean).length / wps + 1.5; return t0; });
-  chapter(0, 'The use case', [], t, a => {
+  chapter(0, title, [], t, a => {
     cap(a(0), '');
     sels.forEach((s, i) => show(a(at[i]), s, .8));
     hide(a(t), '#title', .8);
     show(a(t) + .8, '#parts,.legend', .8);
-  }, 'Overview');
+  }, label);
 }
 
 // =====================================================================================
@@ -536,10 +546,12 @@ const DUR = warp(cursor);
 document.querySelectorAll('#stage .h, #stage .draw').forEach(node);
 tweens.sort((p, q) => p.t - q.t);
 flags.sort((p, q) => p.t - q.t);
+// Each toggled class starts as it was written in the markup, so class="dot ok" stays until the script turns it off.
 const flagPairs = new Map();
 for (const f of flags) {
   if (!flagPairs.has(f.el)) flagPairs.set(f.el, new Map());
-  flagPairs.get(f.el).set(f.cls, false);
+  const m = flagPairs.get(f.el);
+  if (!m.has(f.cls)) m.set(f.cls, f.el.classList.contains(f.cls));
 }
 
 function render(t) {
@@ -685,8 +697,9 @@ document.addEventListener('keydown', e => {
 
 // =====================================================================================
 // SELF-CHECK: run anim.audit() in the browser console, or from a browser-automation tool.
-// It returns {problems: [...]}; an empty list means every automatic check passed at this
-// window size. Run it at each window size you care about. It does not replace looking.
+// It returns {problems: [...], notes: [...]}. An empty problems list means every automatic
+// check passed at this window size. Notes are things to know that are not faults.
+// Run it at each window size you care about. It does not replace looking.
 // =====================================================================================
 function audit() {
   const problems = [];
@@ -725,6 +738,32 @@ function audit() {
     }
   }
 
+  // Text must also fit inside close-up cards, messages and chips.
+  const cut = t => `"${t.textContent.trim().slice(0, 40)}"`;
+  const fits = (box, t, pad) => { const b = box.getBBox(), r = t.getBBox(); return !r.width || (r.x >= b.x + pad - 1 && r.x + r.width <= b.x + b.width - pad + 1); };
+  for (const g of document.querySelectorAll('#stage .dcard')) {
+    const bg = g.querySelector(':scope > .dc-bg');
+    for (const t of g.querySelectorAll('text')) {
+      if (!t.closest('.tag') && !fits(bg, t, 8)) problems.push(`text spills out of close-up card ${g.id} (widen it with {w, nameW}): ${cut(t)}`);
+    }
+    const title = g.querySelector(':scope > .dc-title'), sub = g.querySelector(':scope > .dc-sub');
+    if (title && sub && title.getBBox().x + title.getBBox().width > sub.getBBox().x - 8) problems.push(`title and subtitle of close-up card ${g.id} overlap`);
+    for (const row of g.querySelectorAll(':scope > .row')) {
+      const texts = [...row.querySelectorAll('text')], k = texts[0], v = texts[1];
+      if (k && v && k.getBBox().x + k.getBBox().width > v.getBBox().x - 6) problems.push(`name runs into the value in ${row.id} (raise nameW): ${cut(k)}`);
+      const tag = document.getElementById(`${row.id}-tag`);
+      if (tag) { const edge = tag.querySelector('rect').getBBox().x; for (const t of texts) { const r = t.getBBox(); if (r.x + r.width > edge - 4) problems.push(`text runs under the tag in ${row.id}: ${cut(t)}`); } }
+    }
+  }
+  for (const g of document.querySelectorAll('#stage .pk')) {
+    const box = g.querySelector(':scope > .pill'), t = g.querySelector(':scope > text');
+    if (box && t && !fits(box, t, 10)) problems.push(`text is too wide for its message box ${g.id}: ${cut(t)}`);
+  }
+  for (const g of document.querySelectorAll('#stage .chip')) {
+    const box = g.querySelector(':scope > rect'), t = g.querySelector(':scope > text');
+    if (box && t && !fits(box, t, 6)) problems.push(`label is too wide for its chip: ${cut(t)}`);
+  }
+
   // The title block must fit above the caption bar, and the controls on one row.
   const title = $('#title');
   if (title) {
@@ -737,15 +776,24 @@ function audit() {
   const ctrl = $('#controls');
   if (ctrl.scrollWidth > ctrl.clientWidth) problems.push('controls overflow their row');
 
-  return {viewport: `${innerWidth}x${innerHeight}`, duration: fmt(DUR), chapters: chapters.length, captions: caps.filter(c => c.html).length, maxCaptionLines: maxLines, problems};
+  // Not a fault, but worth knowing: in a small window the stage scales down and its text gets too small to read.
+  const notes = [], scale = $('#stage').getScreenCTM().a;
+  let minPx = Infinity;
+  for (const t of document.querySelectorAll('#stage text')) minPx = Math.min(minPx, parseFloat(getComputedStyle(t).fontSize) * scale);
+  if (minPx < 9) notes.push(`the smallest stage text renders at ${minPx.toFixed(1)} px in this window (stage scale ${scale.toFixed(2)}). This size is for checking wrapping and layout. Reading the diagram needs about 1600 x 900.`);
+
+  return {viewport: `${innerWidth}x${innerHeight}`, duration: fmt(DUR), chapters: chapters.length, captions: caps.filter(c => c.html).length, maxCaptionLines: maxLines, stageScale: +scale.toFixed(2), problems, notes};
 }
 
 // anim.stops: one moment per chapter, just before it ends, when everything that chapter adds is on screen.
+// anim.journeys: the middle of every trip(), when the travelling thing is between panels.
 // Seek to each and look.
 window.anim = {
   seek, chapters, caps, duration: DUR, audit,
+  time: () => T,
   play: () => setPlaying(true), pause: () => setPlaying(false),
   stops: chapters.map(c => ({title: c.title, t: +(c.start + c.dur - .1).toFixed(2)})),
+  journeys: journeys.map(w => ({what: w.el.id ? `#${w.el.id}` : w.el.tagName, t: +(w.t + w.dur / 2).toFixed(2)})),
 };
 const m = location.hash.match(/chapter-(\d+)/);          // page.html#chapter-3 opens at chapter 3
 seek(m ? chapters[Math.min(chapters.length - 1, +m[1])].start + .001 : 0);

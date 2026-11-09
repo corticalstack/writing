@@ -62,8 +62,8 @@ message and lets the user redirect before the drawing exists.
 
 | Piece | What it does | Guidance |
 |---|---|---|
-| Title | Names the problem | It must make sense to someone who has never heard of the project. "How user B's question reaches GNews" fails that test. "Per-user limits on an MCP server that knows no users" passes |
-| Overview | Says why this exists | A one-line subtitle, then three points: **The need**, **The gap**, **The fix** |
+| Title | Names the problem | It must make sense to someone who has never heard of the project. "How user B's question reaches GNews" fails that test. "Per-user limits on an MCP server that knows no users" passes. Keep it to about 50 characters, so it fits on two lines |
+| Overview | Says why this exists | A subtitle of up to about 20 words, then three points of up to about 35 words each: **The need**, **The gap**, **The fix**. Much longer and the block runs into the caption bar, which the audit reports |
 | Set-up | Introduces the actors | Reveal each thing in the order it comes to exist, at the moment its caption appears. Start with the thing being consumed or protected, because it is the constraint everything else works around |
 | Main path | One request, start to finish | One chapter per step |
 | Second path | A failure, a denial or a repeat | This is what teaches the rule. The happy path alone does not show what the mechanism prevents |
@@ -75,25 +75,38 @@ The stage is an SVG with a fixed 1600 x 840 coordinate space that scales to the 
 
 - Give each actor a panel. If one actor serves all the others (an identity provider, a control plane),
   put it across the top and run the request path left to right underneath.
-- Leave gaps of 50 or more between panels. Connectors, step badges and travelling messages live there.
+- Make the gap between two panels at least as wide as the widest message that travels between them.
+  Otherwise the message sits on top of both panels for its whole journey. The template's gap is 340,
+  and its widest message, with its chip, is 340. Panels that exchange nothing need only 50.
+- Keep 44 clear above the top row of panels. The summary's labels go there, each centred 24 above
+  the panel it describes. A label centred on a panel's top edge lands on the panel's title unless
+  the panel is very wide.
 - Route connectors through the gaps. A line that crosses a title or a label looks like a mistake,
   because it is one.
 - Use one colour per actor and one per thing that travels (a ticket, a key, a row). Keep the page
   chrome neutral. If the "Set-up" capsule is purple and so is the identity provider, viewers see a
-  link that does not exist.
+  link that does not exist. Neutral means the part capsules, the caption bar and the controls. The
+  title accent and the timeline bar are decoration and keep their colours.
+- Design for a window of about 1600 x 900 or larger. At 1280 x 720 the stage scales to about half
+  size. Captions and the title block still work there, but the diagram's text is too small to read.
 - Show real names and values from the source in monospace: field names, scope names, paths.
 - The stage carries names and values. The captions carry the explanation. Do not put sentences on
   the stage.
 
 ### 4. Write the script
 
-Copy `assets/template.html`, then replace the three regions marked `EDIT`: the colours, the title block
-and stage, and the building blocks and script. Read `references/engine.md` first.
+Copy `assets/template.html`, then change every place marked `EDIT`. There are seven: the tab title,
+the colours, the legend, the title block, the stage, the pieces added to the stage in code, and the
+script. Keep the building-block functions and add your own beside them. Read `references/engine.md`
+first.
 
 - One chapter is one step. Its caption and its visible change happen at the same moment.
-- Reveal one new thing at a time. If two boxes appear together, the viewer reads neither.
+- Reveal one new thing at a time. If two boxes appear together, the viewer reads neither. The summary
+  is the exception: its labels restate what was shown, so they may arrive together.
 - Put exits (hiding a card, undoing a dim) at the chapter boundary, so they wait for the last caption.
-- Anything shown briefly, such as a command, needs at least 3.5 seconds fully visible.
+- Something the viewer has to read off the stage, and that no caption repeats, needs at least 3.5
+  seconds fully visible. A command flashed up for one second is not read. A message in transit can
+  be quicker, because its caption says what it carries.
 - For the second path, reset what the first path changed, then replay it.
 
 ### 5. Write captions the way a careful teacher talks
@@ -126,7 +139,7 @@ set where things happen; it adds the time.
   with `cap(t, html, 4)`.
 - You know the text, so you read it faster than a viewer will. Do not tune the timing to your own
   reading. When the user says a gap is too long or too short, change that one caption.
-- The overview times itself from its word counts. Pass a different pace to `overview()` to change it.
+- The overview times itself from its word counts. Change its pace with `overview(selectors, {wps: 4})`.
 
 ### 7. Check it in a browser
 
@@ -135,16 +148,19 @@ Serve the folder (`python3 -m http.server 8765 --bind 127.0.0.1`, or VS Code Liv
 
 1. **Audit.** At 1600 x 1000, run `anim.audit()` in the page. Fix until `problems` is empty. Repeat at
    1280 x 720. Text wraps differently at each size: a caption that takes three lines at one width can
-   take four at the other.
-2. **Look.** For each entry in `anim.stops`, call `anim.seek(t)` and take a screenshot. Also seek into
-   the middle of each journey and each close-up. Look for overlaps, connectors crossing labels,
-   something hidden behind something else, and dimmed things that should be bright. The audit cannot
-   see these.
+   take four at the other. At the smaller size the audit adds a note that the stage text is too small
+   to read. That is expected and is not a fault: the small size is for checking wrapping.
+2. **Look.** For each entry in `anim.stops`, call `anim.seek(t)` and take a screenshot. A stop is the
+   end of a chapter, when everything it adds is on screen, close-ups included. Then do the same with
+   `anim.journeys`, which lists the middle of every journey: look at one or more per connector. Look
+   for overlaps, connectors crossing labels, something hidden behind something else, and dimmed
+   things that should be bright. The audit cannot see these.
 3. **Console.** No errors or warnings. A warning that starts `no element for` is a mistyped selector.
-4. **Play.** Call `anim.play()`, wait two seconds, and confirm the clock moved.
+4. **Play.** Call `anim.play()`, wait two seconds, and confirm `anim.time()` moved by about two.
 
-The audit checks caption length, caption-bar height, text spilling out of cards, the title block and
-the controls row. It does not replace looking.
+The audit checks selectors, caption length and hold time, caption-bar height, text fitting inside
+cards, close-up cards, messages and chips, the title block and the controls row. It does not replace
+looking.
 
 If you have no browser tool, say so. Ask the user to open the file and run `anim.audit()` in the
 console, and do not report the animation as checked.
