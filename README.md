@@ -6,6 +6,7 @@ A Claude Code plugin marketplace of writing and content-creation skills, built o
 
 - **changelog-generator** - turn git commit history into user-facing changelogs.
 - **content-research-writer** - research-backed content writing with citations and iterative feedback.
+- **explainer-animation** - build a self-playing, scrubbable explainer animation of a flow or architecture as one dependency-free HTML file.
 - **humanizer** - remove signs of AI-generated writing from text.
 
 ## Install in Claude Code (plugin)
@@ -35,4 +36,4 @@ In a Copilot CLI session: reload with `/skills reload`, confirm with `/skills in
 
 ## Licensing
 
-Repository scaffolding (manifests, README) is MIT. Individual skills retain their own licenses where present: `humanizer` is MIT; `changelog-generator` and `content-research-writer` carry no explicit license - treat them as the maintainer's own.
+Repository scaffolding (manifests, README) is MIT. Individual skills retain their own licenses where present: `humanizer` and `explainer-animation` are MIT; `changelog-generator` and `content-research-writer` carry no explicit license - treat them as the maintainer's own.

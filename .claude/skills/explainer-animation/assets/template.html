@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<!-- EDIT: the browser tab title. Use the same words as the on-screen title. -->
+<title>Cache-aside reads: ask the cache first</title>
+<style>
+/* =====================================================================================
+   EXPLAINER ANIMATION TEMPLATE. One file, no dependencies.
+   Three regions to change, each marked EDIT:
+     1. the colours for your actors (just below)
+     2. the title block and the stage (the SVG in the body)
+     3. the building blocks and the script (the chapters, near the bottom)
+   Leave the sections marked ENGINE and PLAYER as they are unless you are adding a verb.
+   The demo content explains a cache-aside read. Replace all of it.
+   ================================================================================== */
+:root {
+  --bg: #000; --card: #0a1120; --ink: #050a14;
+  --text: #e2e8f0; --muted: #94a3b8; --faint: #64748b;
+  --ok: #34d399; --bad: #f87171;
+  /* EDIT: one colour per actor and one per thing that travels. A colour means one thing everywhere. */
+  --app: #60a5fa; --cache: #fbbf24; --db: #4ade80; --row: #f472b6;
+  --mono: "Cascadia Code", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace;
+  --sans: "Segoe UI", Inter, system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+#app { position: relative; display: flex; flex-direction: column; height: 100vh; }
+
+/* ---------- page chrome: top bar, caption bar, controls. Neutral on purpose: colour belongs to the diagram. ---------- */
+header { display: flex; align-items: center; gap: 14px; padding: 10px 18px; background: #000; min-height: 44px; }
+#parts { display: flex; gap: 6px; margin-left: auto; flex: none; }
+#parts button { background: #070c18; border: 1px solid #1c2840; color: var(--muted); border-radius: 999px; padding: 5px 12px; font: 600 12px var(--sans); cursor: pointer; white-space: nowrap; }
+#parts button.on { background: #000; border-color: #94a3b8; color: #f8fafc; }
+.legend { flex: none; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.lg { display: inline-block; padding: 2px 8px; border-radius: 5px; font-weight: 700; font-size: 11px; border: 1.5px solid var(--c); color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); }
+
+#stage-wrap { position: relative; flex: 1; min-height: 0; padding: 6px 12px 0; overflow: hidden; }
+#stage { width: 100%; height: 100%; display: block; }
+
+#caption { padding: 12px 28px 6px; border-top: 1px solid #111a2b; background: #000; }
+#cap-head { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+#cap-part { font-weight: 700; font-size: 13.5px; letter-spacing: .1em; text-transform: uppercase; padding: 4px 12px; border-radius: 999px; border: 1px solid #94a3b8; color: #f8fafc; background: #000; }
+.num { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--ink); border: 1.5px solid #cbd5e1; color: var(--text); font-weight: 800; font-size: 12px; }
+#cap-title { font-size: 18px; font-weight: 700; color: var(--text); }
+/* min-height reserves three lines, so the stage never jumps when a caption changes length */
+#cap-text { min-height: 4.26em; font-size: clamp(20px, min(1.5vw, 2.8vh), 26px); line-height: 1.42; margin: 8px 0 0; }
+#cap-text.in { animation: capin .45s ease-out; }
+@keyframes capin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+#cap-text code { font-family: var(--mono); font-size: .86em; background: #14203a; border: 1px solid #22325a; border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+
+#controls { display: flex; align-items: center; gap: 10px; padding: 8px 20px 14px; }
+#controls button { background: #0a1120; border: 1px solid #1c2840; color: var(--text); border-radius: 8px; height: 34px; min-width: 38px; display: grid; place-items: center; cursor: pointer; font: 600 12.5px var(--sans); }
+#controls button:hover { border-color: #38bdf8; }
+#controls svg { width: 16px; height: 16px; fill: currentColor; }
+#bar { position: relative; flex: 1; min-width: 120px; height: 26px; cursor: pointer; touch-action: none; }
+#bar .track { position: absolute; left: 0; right: 0; top: 11px; height: 4px; background: #1e293b; border-radius: 2px; }
+#bar .fill { position: absolute; left: 0; top: 11px; height: 4px; width: 0; border-radius: 2px; background: linear-gradient(90deg, #22d3ee, #a78bfa); }
+#bar .tick { position: absolute; top: 7px; width: 2px; height: 12px; margin-left: -1px; background: #3b4a66; }
+#bar .tick.part { top: 4px; height: 18px; background: #8193b2; }
+#bar .knob { position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #e2e8f0; box-shadow: 0 0 0 3px rgba(56, 189, 248, .25); }
+#tip { position: absolute; bottom: 28px; transform: translateX(-50%); background: #0f172a; border: 1px solid #334155; padding: 4px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s; }
+#bar:hover #tip { opacity: 1; }
+#time { font-family: var(--mono); font-size: 12.5px; color: var(--muted); min-width: 92px; text-align: right; }
+.toggle { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; user-select: none; white-space: nowrap; cursor: pointer; }
+.keys { padding-left: 12px; border-left: 1px solid #1c2840; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+
+/* ---------- the opening title block: an HTML overlay, so it scales with the window and wraps by itself ---------- */
+.intro { position: absolute; z-index: 2; top: 8px; left: clamp(16px, 2.2vw, 40px); right: clamp(16px, 2.2vw, 40px); color: #cfeefa; pointer-events: none; }
+.intro h1 { margin: 0; font-size: clamp(28px, min(4.6vw, 7vh), 88px); font-weight: 800; letter-spacing: .02em; line-height: 1.08; text-transform: uppercase; color: #e4f7ff; text-shadow: 0 .1em 1em rgba(0, 0, 0, .95); }
+.intro .acc { color: #5fd8ff; }
+.intro .kicker { margin: .6em 0 0; font-size: clamp(18px, min(2.3vw, 3.6vh), 42px); line-height: 1.35; }
+.intro .outline { list-style: none; margin: 1.1em 0 0; padding: 0; display: grid; gap: .6em; font-size: clamp(16px, min(1.95vw, 3.1vh), 35px); }
+.intro .outline li { padding-left: .8em; border-left: 3px solid rgba(95, 216, 255, .45); line-height: 1.42; }
+.intro .outline b { color: #e4f7ff; }
+
+/* ---------- stage vocabulary ---------- */
+svg text { fill: var(--text); font-family: var(--sans); }
+svg .mono { font-family: var(--mono); }
+.h { opacity: 0; }                       /* hidden at the start; the script shows it */
+.t-title { font-size: 22px; font-weight: 800; fill: var(--c); }
+.t-tag { font-size: 10.5px; font-weight: 800; letter-spacing: .12em; fill: var(--c); }
+.t-h { font-size: 15px; font-weight: 700; }
+.t-b { font-size: 13.5px; }
+.t-m { font-size: 12.5px; fill: var(--muted); }
+.panel-bg { fill: color-mix(in srgb, var(--c) 5%, transparent); stroke: color-mix(in srgb, var(--c) 45%, transparent); stroke-width: 1.5; }
+.card > .bg { fill: var(--card); stroke: color-mix(in srgb, var(--c) 45%, transparent); stroke-width: 1.4; transition: stroke .3s, stroke-width .3s; }
+.card.glow > .bg { stroke: var(--c); stroke-width: 3; filter: url(#glowF); }
+.row > .hl { fill: color-mix(in srgb, var(--c, #94a3b8) 24%, transparent); opacity: 0; transition: opacity .3s; }
+.row.glow > .hl { opacity: 1; }
+.hop { fill: none; stroke: #5b6b84; stroke-width: 2; }
+.hop.done { marker-end: url(#arr); }     /* the arrowhead appears only once the line has finished drawing */
+.badge circle { fill: #0b1324; stroke: #cbd5e1; stroke-width: 1.5; }
+.badge text { font-size: 13px; font-weight: 800; text-anchor: middle; }
+.dot circle { fill: #1e293b; stroke: #475569; stroke-width: 1.5; transition: fill .25s, stroke .25s; }
+.dot text { opacity: 0; font-size: 11px; font-weight: 900; fill: #04121a; text-anchor: middle; transition: opacity .2s; }
+.dot.ok circle { fill: var(--ok); stroke: var(--ok); }
+.dot.ok .yes { opacity: 1; }
+.dot.bad circle { fill: var(--bad); stroke: var(--bad); }
+.dot.bad .no { opacity: 1; }
+.pill { fill: var(--ink); stroke: var(--c); stroke-width: 1.6; }
+.pk-t { font-size: 13px; }
+.pk.bad .pill { fill: #2a0f14; }
+.pk.bad .pk-t { fill: #fecaca; }
+.pk.good .pill { fill: #0b241c; }
+.chip > rect { fill: color-mix(in srgb, var(--c) 22%, var(--ink)); stroke: var(--c); stroke-width: 1.8; }
+.chip > text { font-size: 12.5px; font-weight: 800; fill: var(--c); }
+.dc-bg { fill: var(--ink); stroke: var(--c); stroke-width: 2; filter: url(#shadowF); }
+.dc-head { fill: color-mix(in srgb, var(--c) 26%, var(--ink)); }
+.dc-title { font-size: 15px; font-weight: 800; fill: var(--c); letter-spacing: .08em; }
+.dc-sub { font-size: 13px; }
+.dc-k { font-size: 14px; font-weight: 700; fill: var(--c); }
+.dc-v { font-size: 15px; font-weight: 600; fill: #f8fafc; }
+.dc-m { font-size: 12px; fill: var(--muted); }
+.tag > rect { fill: color-mix(in srgb, var(--tc) 18%, var(--ink)); stroke: var(--tc); stroke-width: 1.4; }
+.tag > text { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; fill: var(--tc); text-anchor: middle; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- The top bar stays hidden during the overview, so the title can use the full width. -->
+  <header>
+    <nav id="parts" class="h"></nav>
+    <!-- EDIT: one entry per travelling thing. Delete the legend if nothing travels. -->
+    <div class="legend h">
+      <span class="lg" style="--c:var(--row)">row</span> the product row
+    </div>
+  </header>
+
+  <!-- EDIT: the title block. The title must make sense to someone who has never heard of your project. -->
+  <div id="title" class="intro">
+    <h1><span class="acc">Cache-aside</span> reads: ask the cache first</h1>
+    <p id="ti-kick" class="kicker h">How an app answers repeat reads without asking the database every time.</p>
+    <ol class="outline">
+      <li id="ti-1" class="h"><b>The need.</b> The same product page is read thousands of times a minute, and each read costs a database query.</li>
+      <li id="ti-2" class="h"><b>The gap.</b> The database is the only place the data lives, so every read waits on it, even when nothing has changed.</li>
+      <li id="ti-3" class="h"><b>The fix.</b> The app asks a cache first. On a miss it reads the database and stores the answer in the cache, so the next read is served from memory.</li>
+    </ol>
+  </div>
+
+  <div id="stage-wrap">
+<!-- EDIT: the stage. Coordinates are in a fixed 1600 x 840 space. Give every actor a panel, leave gaps between
+     panels for connectors, and mark anything that should start hidden with class="h". -->
+<svg id="stage" viewBox="0 0 1600 840" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Animated walk-through of a cache-aside read">
+  <defs>
+    <filter id="glowF" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadowF" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity=".6"/>
+    </filter>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="13" markerHeight="13" orient="auto">
+      <path d="M0 1L9 5L0 9z" fill="#8193b2"/>
+    </marker>
+  </defs>
+
+  <!-- ===== App ===== -->
+  <g id="p-app" class="h" style="--c:var(--app)">
+    <rect class="panel-bg" x="60" y="50" width="500" height="750" rx="18"/>
+    <text class="t-title" x="84" y="86">App</text>
+    <text class="t-m" x="84" y="108">your service</text>
+    <g id="c-req" class="card">
+      <rect class="bg" x="84" y="130" width="452" height="110" rx="12"/>
+      <text class="t-tag" x="100" y="156">REQUEST</text>
+      <text class="t-h mono" x="100" y="184">GET /products/42</text>
+      <text class="t-m" x="100" y="210">the same page, read again and again</text>
+    </g>
+    <g id="c-ans" class="card">
+      <rect class="bg" x="84" y="560" width="452" height="200" rx="12"/>
+      <text class="t-tag" x="100" y="586">ANSWERS</text>
+      <g id="ans1" class="h">
+        <text class="t-b" x="100" y="620">200 OK · Blue kettle</text>
+        <text class="t-m" x="100" y="641">first read: from the database</text>
+      </g>
+      <g id="ans2" class="h">
+        <text class="t-b" x="100" y="690">200 OK · Blue kettle</text>
+        <text class="t-m" x="100" y="711" style="fill:var(--ok)">second read: from the cache</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ===== Cache ===== -->
+  <g id="p-cache" class="h" style="--c:var(--cache)">
+    <rect class="panel-bg" x="900" y="50" width="640" height="350" rx="18"/>
+    <text class="t-title" x="924" y="86">Cache</text>
+    <text class="t-m" x="924" y="108">in memory</text>
+    <g id="c-look" class="card">
+      <rect class="bg" x="924" y="130" width="280" height="120" rx="12"/>
+      <text class="t-tag" x="940" y="156">LOOKUP</text>
+      <!-- a check that fills in: the script adds class ok or bad -->
+      <g id="chk" class="dot"><circle cx="950" cy="190" r="8"/><text class="yes" x="950" y="194">✓</text><text class="no" x="950" y="194">✕</text></g>
+      <text id="chk-q" class="t-b" x="968" y="195">products:42 present?</text>
+      <text id="chk-miss" class="t-b h" x="968" y="195" style="fill:var(--bad)">products:42: not found</text>
+      <text id="chk-hit" class="t-b h" x="968" y="195" style="fill:var(--ok)">products:42: found</text>
+      <text class="t-m" x="940" y="230">one check per read</text>
+    </g>
+    <g id="c-ent" class="card">
+      <rect class="bg" x="1236" y="130" width="280" height="120" rx="12"/>
+      <text class="t-tag" x="1252" y="156">ENTRIES</text>
+      <text id="ent-empty" class="t-m" x="1252" y="193">empty</text>
+      <!-- class="row" gives a highlight bar that glow() turns on -->
+      <g id="ent-row" class="row h">
+        <rect class="hl" x="1244" y="174" width="264" height="28" rx="4"/>
+        <text class="t-b mono" x="1252" y="193" style="font-size:12.5px">products:42</text>
+        <text class="t-m" x="1400" y="193">TTL 300 s</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ===== Database ===== -->
+  <g id="p-db" class="h" style="--c:var(--db)">
+    <rect class="panel-bg" x="900" y="450" width="640" height="350" rx="18"/>
+    <text class="t-title" x="924" y="486">Database</text>
+    <text class="t-m" x="924" y="508">the source of truth</text>
+    <g id="c-tbl" class="card">
+      <rect class="bg" x="924" y="530" width="592" height="130" rx="12"/>
+      <text class="t-tag" x="940" y="556">TABLE · PRODUCTS</text>
+      <text class="t-m" x="940" y="582">id</text><text class="t-m" x="1010" y="582">name</text><text class="t-m" x="1240" y="582">price</text>
+      <g id="tbl-row" class="row">
+        <rect class="hl" x="932" y="594" width="576" height="28" rx="4"/>
+        <text class="t-b mono" x="940" y="613">42</text><text class="t-b mono" x="1010" y="613">Blue kettle</text><text class="t-b mono" x="1240" y="613">24.00</text>
+      </g>
+      <text class="t-m mono" x="940" y="643">43</text><text class="t-m mono" x="1010" y="643">Red teapot</text><text class="t-m mono" x="1240" y="643">31.00</text>
+    </g>
+    <text id="db-ok" class="t-b h" x="924" y="712" style="fill:var(--ok)">✓ returned 1 row</text>
+    <text id="db-not" class="t-b h" x="924" y="712" style="fill:var(--muted)">✕ not called</text>
+  </g>
+
+  <!-- ===== connectors. class="draw" makes a path draw itself in. Keep them in the gaps, never across a label. ===== -->
+  <g id="lines">
+    <path id="L1" class="hop draw" d="M562 210H896"/>
+    <path id="L2" class="hop draw" d="M562 610H896"/>
+    <path id="L3" class="hop draw" d="M562 300H896"/>
+  </g>
+
+  <!-- motion paths: never drawn, only followed by things that travel -->
+  <g fill="none" stroke="none">
+    <path id="mp1" d="M330 210H1060"/>
+    <path id="mp2" d="M330 610H1100"/>
+    <path id="mp3" d="M330 300H1100"/>
+  </g>
+
+  <g id="packets"></g>
+  <g id="cards"></g>
+</svg>
+  </div>
+
+  <section id="caption">
+    <div id="cap-head"><span id="cap-part"></span><span id="cap-nums"></span><span id="cap-title"></span></div>
+    <p id="cap-text"></p>
+  </section>
+
+  <footer id="controls">
+    <button id="btn-prev" title="Previous chapter (Left arrow)"><svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg></button>
+    <button id="btn-play" title="Play or pause (Space)"><svg viewBox="0 0 16 16"><path id="ico-play" d="M4 2l10 6-10 6z"/></svg></button>
+    <button id="btn-next" title="Next chapter (Right arrow)"><svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg></button>
+    <div id="bar"><div class="track"></div><div class="fill"></div><div id="ticks"></div><div class="knob"></div><div id="tip"></div></div>
+    <span id="time">0:00 / 0:00</span>
+    <button id="btn-speed" title="Playback speed">1×</button>
+    <label class="toggle"><input type="checkbox" id="chk-step"> Pause after each step (S)</label>
+    <span class="keys">Space: play or pause · Left / Right arrow: previous or next chapter · R: restart · F: full screen</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const NS = 'http://www.w3.org/2000/svg';
+
+// =====================================================================================
+// BUILDING BLOCKS: pieces made in code because they repeat. All are centred on (0, 0),
+// so the engine can move them. Add your own in the same way.
+// =====================================================================================
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'text') el.textContent = v; else el.setAttribute(k, v);
+  }
+  for (const c of kids) if (c) el.append(c);
+  return el;
+}
+// A step number in a circle, placed beside the connector it belongs to. Its id is b1, b2, ...
+function badge(n, x, y) {
+  return h('g', {id: `b${n}`, class: 'badge h'}, h('circle', {cx: x, cy: y, r: 12}), h('text', {x, y: y + 4.5, text: String(n)}));
+}
+// A small labelled token for a thing that travels: a ticket, a row, a key.
+function chip(label, color, {id = null, w = 92} = {}) {
+  const attrs = {class: id ? 'chip h' : 'chip', style: `--c:${color}`, 'data-w': w};
+  if (id) attrs.id = id;
+  return h('g', attrs,
+    h('rect', {x: -w / 2, y: -16, width: w, height: 32, rx: 6}),
+    h('text', {x: 0, y: 5, 'text-anchor': 'middle', text: label}));
+}
+// A message in a rounded box, with an optional chip attached on the right (tail).
+// Give x and y to pin it in place; leave them out for a message that travels along a motion path.
+function pill(id, text, color, w, {mono = false, tail = null, cls = '', x = null, y = null} = {}) {
+  const attrs = {id, class: `pk h ${cls}`.trim(), style: `--c:${color}`};
+  if (x !== null) { attrs['data-x'] = x; attrs['data-y'] = y; }
+  const g = h('g', attrs);
+  const tailW = tail ? +tail.getAttribute('data-w') + 12 : 0;
+  const x0 = -(w + tailW) / 2;
+  g.append(h('rect', {class: 'pill', x: x0, y: -17, width: w, height: 34, rx: 17}));
+  g.append(h('text', {x: x0 + w / 2, y: 5, 'text-anchor': 'middle', class: mono ? 'pk-t mono' : 'pk-t', text}));
+  if (tail) { tail.setAttribute('transform', `translate(${x0 + w + 12 + (tailW - 12) / 2} 0)`); g.append(tail); }
+  return g;
+}
+// A large card for looking closely at one thing: a title bar, then rows of [name, value, plain-words note].
+// A row may end with [.., tagText, tagColor] for a small tag that starts hidden.
+// Row ids are `${id}-${name}`; tag ids are `${id}-${name}-tag`.
+function detailCard(id, title, sub, color, rows) {
+  const H = 60 + rows.length * 40, y0 = -H / 2;
+  const g = h('g', {id, class: 'dcard h', style: `--c:${color}`});
+  g.append(h('rect', {class: 'dc-bg', x: -200, y: y0, width: 400, height: H, rx: 14}));
+  g.append(h('path', {class: 'dc-head', d: `M-200 ${y0 + 14}a14 14 0 0 1 14-14h372a14 14 0 0 1 14 14v26h-400z`}));
+  g.append(h('text', {class: 'dc-title', x: -182, y: y0 + 26, text: title}));
+  g.append(h('text', {class: 'dc-sub', x: 182, y: y0 + 26, 'text-anchor': 'end', text: sub}));
+  rows.forEach(([name, value, note, tagText, tagColor], i) => {
+    const y = y0 + 68 + i * 40;
+    g.append(h('g', {id: `${id}-${name}`, class: 'row'},
+      h('rect', {class: 'hl', x: -192, y: y - 17, width: 384, height: 38, rx: 6}),
+      h('text', {class: 'dc-k mono', x: -182, y, text: name}),
+      h('text', {class: 'dc-v mono', x: -110, y, text: value}),
+      h('text', {class: 'dc-m', x: -110, y: y + 16, text: note})));
+    if (tagText) g.append(h('g', {id: `${id}-${name}-tag`, class: 'tag h', style: `--tc:${tagColor || 'var(--ok)'}`},
+      h('rect', {x: 112, y: y - 14, width: 78, height: 22, rx: 5}),
+      h('text', {x: 151, y: y + 1.5, text: tagText})));
+  });
+  return g;
+}
+
+// EDIT: build the pieces for your story and add them to the stage.
+// Badges sit 32 above their connector, so a message passing along it never covers them.
+$('#lines').append(badge(1, 730, 178), badge(2, 730, 578), badge(3, 730, 268));
+$('#packets').append(
+  pill('pk-get', 'GET products:42', 'var(--app)', 190, {mono: true}),
+  pill('pk-miss', 'miss', 'var(--bad)', 90, {cls: 'bad'}),
+  pill('pk-sql', 'SELECT * FROM products WHERE id = 42', 'var(--app)', 330, {mono: true}),
+  pill('pk-row', '1 row', 'var(--db)', 90, {tail: chip('row', 'var(--row)')}),
+  pill('pk-set', 'SET products:42 · TTL 300 s', 'var(--app)', 250, {mono: true, tail: chip('row', 'var(--row)')}),
+  pill('pk-hit', 'hit', 'var(--ok)', 80, {cls: 'good', tail: chip('row', 'var(--row)')}),
+  pill('rc-app', 'decides where to read from', 'var(--app)', 250, {x: 310, y: 50}),
+  pill('rc-cache', 'stores only what the app puts in it', 'var(--cache)', 300, {x: 1220, y: 50}),
+  pill('rc-db', 'stays the source of truth', 'var(--db)', 240, {x: 1220, y: 450}),
+);
+$('#cards').append(
+  detailCard('card-entry', 'CACHE ENTRY', 'stored by the app', 'var(--cache)', [
+    ['key', 'products:42', 'what the app asks for'],
+    ['value', 'Blue kettle · 24.00', 'the row, as the database returned it'],
+    ['ttl', '300 s', 'how long the cache keeps the entry', 'EXPIRES', 'var(--bad)'],
+  ]),
+);
+
+// =====================================================================================
+// ENGINE: the whole picture is a pure function of time. Every verb below only records
+// "from time t, this element changes like so". That is what makes scrubbing, jumping
+// between chapters and playing backwards work for free.
+// =====================================================================================
+const EASE = {
+  lin: p => p,
+  io: p => (p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2),
+  out: p => 1 - Math.pow(1 - p, 3),
+  back: p => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); },
+};
+const nodes = new Map();
+const tweens = [], flags = [], caps = [], chapters = [], missing = [];
+
+function node(el) {
+  let n = nodes.get(el);
+  if (!n) {
+    const draw = el.classList.contains('draw');
+    const bx = +(el.getAttribute('data-x') || 0), by = +(el.getAttribute('data-y') || 0);
+    n = {base: {o: el.classList.contains('h') ? 0 : 1, k: 1, x: bx, y: by, s: 1, d: draw ? 0 : 1}, last: {}, len: 0};
+    if (draw) { n.len = el.getTotalLength(); el.style.strokeDasharray = n.len; }
+    el.style.transformBox = 'fill-box';
+    el.style.transformOrigin = 'center';
+    nodes.set(el, n);
+  }
+  return n;
+}
+function els(sel) {
+  const list = [...document.querySelectorAll(sel)];
+  if (!list.length) { console.warn('no element for', sel); missing.push(sel); }
+  return list;
+}
+// tw: from time t, move these properties to these values over dur seconds.
+// o = opacity, k = dimming multiplier, x and y = position, s = scale, d = how much of a .draw path is drawn (0 to 1).
+function tw(t, sel, to, dur = .6, ease = 'io') {
+  for (const el of els(sel)) { node(el); tweens.push({t, dur, el, to, ease}); }
+}
+function along(t, sel, pathSel, dur, {rev = false, ease = 'io'} = {}) {
+  const path = $(pathSel), L = path.getTotalLength();
+  for (const el of els(sel)) { node(el); tweens.push({t, dur, el, path, L, rev, ease}); }
+}
+function fx(t, sel, cls, on = true) { for (const el of els(sel)) flags.push({t, el, cls, on}); }
+// cap: the caption from time t. wps overrides the reading pace (words per second) for this caption only.
+function cap(t, html, wps) { caps.push({t, html, wps}); }
+
+const show = (t, s, d = .6) => tw(t, s, {o: 1}, d, 'out');
+const hide = (t, s, d = .5) => tw(t, s, {o: 0}, d, 'io');
+const set = (t, s, props) => tw(t, s, props, 0);
+const pop = (t, s, d = .7) => { set(t, s, {s: .86}); tw(t, s, {o: 1, s: 1}, d, 'back'); };
+const dim = (t, s, k, d = .6) => tw(t, s, {k}, d, 'io');
+const glow = (t, s, until) => { fx(t, s, 'glow'); if (until !== undefined) fx(until, s, 'glow', false); };
+const drawL = (t, s, d = .9) => { tw(t, s, {d: 1}, d, 'io'); fx(t + d, s, 'done'); };
+const undraw = (t, s) => { set(t, s, {d: 0}); fx(t, s, 'done', false); };
+// trip: something travels along a motion path, then fades out unless {keep: true}. {rev: true} travels backwards.
+function trip(t, s, pathSel, d, opts = {}) {
+  along(t, s, pathSel, d, opts);
+  show(t, s, .3);
+  if (opts.keep !== true) hide(t + d + .05, s, .35);
+}
+
+// chapter: a(n) inside build means "n seconds into this chapter". dur is the scripted length;
+// the engine adds reading time on top (see READING TIME below).
+let cursor = 0;
+function chapter(part, title, nums, dur, build, label) {
+  chapters.push({part, title, nums, start: cursor, dur, label});
+  const start = cursor;
+  build(o => start + o);
+  cursor += dur;
+}
+// overview: the opening chapter. The title block is up and the top bar is hidden. Each selector appears
+// once the one before it has had time to be read; the first (the subtitle) gets a fixed two seconds.
+function overview(sels, wps = 3.5) {
+  let t = .6;
+  const at = sels.map((s, i) => { const t0 = t; t += i === 0 ? 2 : $(s).textContent.split(/\s+/).filter(Boolean).length / wps + 1.5; return t0; });
+  chapter(0, 'The use case', [], t, a => {
+    cap(a(0), '');
+    sels.forEach((s, i) => show(a(at[i]), s, .8));
+    hide(a(t), '#title', .8);
+    show(a(t) + .8, '#parts,.legend', .8);
+  }, 'Overview');
+}
+
+// =====================================================================================
+// EDIT: THE SCRIPT. One chapter per step of the story. Captions say what is happening in
+// plain words; the picture shows it at the same moment.
+// =====================================================================================
+const PARTS = ['Set-up', 'First read', 'Second read', 'Summary'];
+const ALL = '#p-app,#p-cache,#p-db,#lines,#packets';
+
+overview(['#ti-kick', '#ti-1', '#ti-2', '#ti-3']);
+
+// Set-up: reveal each part when its caption appears, in the order the parts come to exist.
+chapter(0, 'The three parts', [], 12, a => {
+  show(a(.2), '#p-app', .8);
+  cap(a(.2), 'The <b>app</b> receives the request <code>GET /products/42</code>.');
+  show(a(4), '#p-db', .8);
+  cap(a(4), 'The <b>database</b> holds the products table. It is the source of truth.');
+  show(a(8), '#p-cache', .8);
+  cap(a(8), 'The <b>cache</b> keeps recent answers in memory, each under a key. It starts empty.');
+});
+
+chapter(1, 'Ask the cache', [1], 12, a => {
+  drawL(a(.3), '#L1', .8); pop(a(.3), '#b1');
+  trip(a(.5), '#pk-get', '#mp1', 2);
+  cap(a(.3), 'The app asks the cache for the key <code>products:42</code>.');
+  glow(a(2.6), '#c-look', a(12));
+  hide(a(4.5), '#chk-q', .2); show(a(4.6), '#chk-miss', .3); fx(a(4.6), '#chk', 'bad');
+  cap(a(4.5), 'The cache has no entry under that key. This is a <b>miss</b>.');
+  trip(a(6), '#pk-miss', '#mp1', 1.8, {rev: true});
+});
+
+chapter(1, 'Read the database', [2], 12, a => {
+  drawL(a(.3), '#L2', .8); pop(a(.3), '#b2');
+  trip(a(.5), '#pk-sql', '#mp2', 2.2);
+  cap(a(.3), 'So the app reads the row from the database. This is the slow step the cache exists to avoid.');
+  glow(a(2.9), '#tbl-row', a(12)); show(a(3.2), '#db-ok');
+  trip(a(6), '#pk-row', '#mp2', 2.2, {rev: true});
+  cap(a(6), 'The database returns the row.');
+});
+
+chapter(1, 'Store the answer', [3], 24, a => {
+  drawL(a(.3), '#L3', .8); pop(a(.3), '#b3');
+  trip(a(.5), '#pk-set', '#mp3', 2.2);
+  cap(a(.3), 'The app stores the row in the cache under <code>products:42</code>, then answers the request.');
+  hide(a(2.8), '#ent-empty', .2); show(a(3), '#ent-row'); glow(a(3), '#ent-row', a(7));
+  show(a(4.5), '#ans1');
+  // Look closely at one thing: dim everything else and bring up a detail card.
+  dim(a(8), ALL, .15); set(a(8), '#card-entry', {x: 800, y: 425}); pop(a(8.1), '#card-entry');
+  cap(a(8), 'A cache entry is a key, a value and a TTL (time to live: how long the cache keeps the entry).');
+  pop(a(15), '#card-entry-ttl-tag'); glow(a(15), '#card-entry-ttl', a(24));
+  cap(a(15), 'After 300 seconds the cache drops the entry, and the next read goes to the database again.');
+  // Exits go at the chapter boundary, so they wait for the last caption to be read.
+  hide(a(24), '#card-entry', .5); dim(a(24), ALL, 1);
+});
+
+// The second path through the same picture: reset what the first path changed, then replay.
+chapter(2, 'Ask the cache again', [1], 14, a => {
+  hide(a(0), '#chk-miss,#db-ok', .3); fx(a(0), '#chk', 'bad', false); show(a(.4), '#chk-q', .3);
+  cap(a(.3), 'The same request arrives again.');
+  trip(a(1.2), '#pk-get', '#mp1', 2);
+  glow(a(3.3), '#c-look', a(14));
+  hide(a(4.5), '#chk-q', .2); show(a(4.6), '#chk-hit', .3); fx(a(4.6), '#chk', 'ok');
+  glow(a(4.6), '#ent-row', a(9));
+  cap(a(4.5), 'This time the cache has the entry. This is a <b>hit</b>.');
+  trip(a(7), '#pk-hit', '#mp1', 1.8, {rev: true});
+  show(a(9), '#ans2'); show(a(9), '#db-not');
+  cap(a(9), 'The app answers from memory, and the database is not called.');
+});
+
+chapter(3, 'Who does what', [], 8, a => {
+  pop(a(.3), '#rc-app'); pop(a(.9), '#rc-cache'); pop(a(1.5), '#rc-db');
+  cap(a(.3), 'The app decides where to read from. The cache stores only what the app puts in it. The database stays the source of truth.');
+});
+
+// =====================================================================================
+// READING TIME: hold the picture still until each caption can be read. If a caption's
+// slot is shorter than words / pace + PAD, the engine inserts a pause at the end of that
+// slot and shifts everything after it. Raise the pace per caption with cap(t, html, wps).
+// =====================================================================================
+const WORDS_PER_SEC = 3.0, PAD = 1.0;
+caps.sort((p, q) => p.t - q.t);
+const ends = chapters.map(c => c.start + c.dur);
+const holds = [];   // [script time at which to hold, seconds]
+caps.forEach((c, i) => {
+  const chEnd = ends.find(e => e > c.t + 1e-6);
+  const segEnd = Math.min(i + 1 < caps.length ? caps[i + 1].t : cursor, chEnd);
+  const words = c.html.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length;
+  const extra = words ? words / (c.wps || WORDS_PER_SEC) + PAD - (segEnd - c.t) : 0;
+  if (extra > 0) holds.push([segEnd, extra]);
+});
+const warp = t => t + holds.reduce((s, [e, x]) => s + (e <= t + 1e-6 ? x : 0), 0);
+const warpEnd = t => t + holds.reduce((s, [e, x]) => s + (e < t - 1e-6 ? x : 0), 0);
+for (const w of tweens) { const t1 = warpEnd(w.t + w.dur); w.t = warp(w.t); w.dur = Math.max(0, t1 - w.t); }
+for (const f of flags) f.t = warp(f.t);
+for (const c of caps) c.t = warp(c.t);
+chapters.forEach((c, i) => { const s = warp(c.start), e = warp(ends[i]); c.start = s; c.dur = e - s; });
+
+// ---------- prepare ----------
+const DUR = warp(cursor);
+document.querySelectorAll('#stage .h, #stage .draw').forEach(node);
+tweens.sort((p, q) => p.t - q.t);
+flags.sort((p, q) => p.t - q.t);
+const flagPairs = new Map();
+for (const f of flags) {
+  if (!flagPairs.has(f.el)) flagPairs.set(f.el, new Map());
+  flagPairs.get(f.el).set(f.cls, false);
+}
+
+function render(t) {
+  const st = new Map();
+  for (const [el, n] of nodes) st.set(el, {...n.base});
+  for (const w of tweens) {
+    if (t < w.t) break;
+    const s = st.get(w.el);
+    const p = w.dur > 0 ? Math.min(1, (t - w.t) / w.dur) : 1;
+    const e = EASE[w.ease](p);
+    if (w.path) {
+      const pt = w.path.getPointAtLength((w.rev ? 1 - e : e) * w.L);
+      s.x = pt.x; s.y = pt.y;
+    } else {
+      for (const k in w.to) s[k] += (w.to[k] - s[k]) * e;
+    }
+  }
+  for (const [el, s] of st) {
+    const n = nodes.get(el), L = n.last;
+    const o = Math.max(0, Math.min(1, s.o * s.k));
+    const os = o.toFixed(3);
+    if (L.o !== os) { el.style.opacity = os; el.style.visibility = o < .002 ? 'hidden' : ''; L.o = os; }
+    const tr = `translate(${s.x.toFixed(2)}px, ${s.y.toFixed(2)}px) scale(${s.s.toFixed(4)})`;
+    if (L.tr !== tr) { el.style.transform = tr; L.tr = tr; }
+    if (n.len) {
+      const off = (n.len * (1 - Math.min(1, s.d))).toFixed(1);
+      if (L.d !== off) { el.style.strokeDashoffset = off; L.d = off; }
+    }
+  }
+  const on = new Map();
+  for (const [el, m] of flagPairs) on.set(el, new Map(m));
+  for (const f of flags) { if (t < f.t) break; on.get(f.el).set(f.cls, f.on); }
+  for (const [el, m] of on) for (const [cls, v] of m) if (el.classList.contains(cls) !== v) el.classList.toggle(cls, v);
+}
+
+// =====================================================================================
+// PLAYER
+// =====================================================================================
+let T = 0, playing = false, speed = 1, lastNow = 0, skipB = null, capIdx = -1, chIdx = -1;
+const SPEEDS = [.75, 1, 1.25, 1.5, 2];
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const chapterAt = t => { let i = 0; chapters.forEach((c, j) => { if (c.start <= t + 1e-6) i = j; }); return i; };
+
+const parts = $('#parts');
+PARTS.forEach((p, i) => {
+  const b = document.createElement('button');
+  b.textContent = `${i + 1} · ${p}`;
+  b.onclick = () => seek((chapters.find(c => c.part === i && !c.label) || chapters.find(c => c.part === i)).start + .001);
+  parts.append(b);
+});
+const ticks = $('#ticks');
+chapters.forEach((c, i) => {
+  if (i === 0) return;
+  const d = document.createElement('div');
+  d.className = 'tick' + (chapters[i - 1].part !== c.part ? ' part' : '');
+  d.style.left = `${(c.start / DUR) * 100}%`;
+  ticks.append(d);
+});
+
+function draw() {
+  render(T);
+  $('#bar .fill').style.width = `${(T / DUR) * 100}%`;
+  $('#bar .knob').style.left = `${(T / DUR) * 100}%`;
+  $('#time').textContent = `${fmt(T)} / ${fmt(DUR)}`;
+  const ci = chapterAt(T);
+  if (ci !== chIdx) {
+    chIdx = ci;
+    const c = chapters[ci];
+    $('#cap-part').textContent = c.label || PARTS[c.part];
+    $('#cap-nums').innerHTML = c.nums.map(n => `<span class="num">${n}</span>`).join(' ');
+    $('#cap-title').textContent = c.title;
+    [...parts.children].forEach((b, i) => b.classList.toggle('on', i === c.part));
+  }
+  let k = -1;
+  caps.forEach((c, i) => { if (c.t <= T + 1e-6) k = i; });
+  if (k !== capIdx) {
+    capIdx = k;
+    const p = $('#cap-text');
+    p.innerHTML = k >= 0 ? caps[k].html : '';
+    p.classList.remove('in'); void p.offsetWidth; p.classList.add('in');
+  }
+}
+function setPlaying(v) {
+  playing = v;
+  $('#ico-play').setAttribute('d', v ? 'M3 2h4v12H3zM9 2h4v12H9z' : 'M4 2l10 6-10 6z');
+}
+function seek(t) { T = Math.max(0, Math.min(DUR, t)); skipB = null; draw(); }
+function boundaryAfter(t) {
+  for (const c of chapters) { const e = c.start + c.dur; if (e > t + 1e-6) return e; }
+  return null;
+}
+function frame(now) {
+  const dt = Math.min(.1, (now - lastNow) / 1000);
+  lastNow = now;
+  if (playing) {
+    let nt = T + dt * speed;
+    if ($('#chk-step').checked) {
+      const b = boundaryAfter(T);
+      if (b !== null && b < DUR && b !== skipB && nt >= b) { nt = b - .02; skipB = b; setPlaying(false); }
+    }
+    if (skipB !== null && nt > skipB + .05) skipB = null;
+    if (nt >= DUR) { nt = DUR; setPlaying(false); }
+    T = nt;
+    draw();
+  }
+  requestAnimationFrame(frame);
+}
+function toggle() { if (!playing && T >= DUR) seek(0); setPlaying(!playing); }
+function next() { const i = chapterAt(T); if (i < chapters.length - 1) seek(chapters[i + 1].start + .001); }
+function prev() {
+  const i = chapterAt(T), c = chapters[i];
+  seek(T - c.start > 1.5 || i === 0 ? c.start + .001 : chapters[i - 1].start + .001);
+}
+
+$('#btn-play').onclick = toggle;
+$('#btn-next').onclick = next;
+$('#btn-prev').onclick = prev;
+$('#btn-speed').onclick = e => {
+  speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length];
+  e.currentTarget.textContent = `${speed}×`;
+};
+const bar = $('#bar');
+const barTime = e => { const r = bar.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * DUR; };
+let dragging = false;
+bar.addEventListener('pointerdown', e => { dragging = true; bar.setPointerCapture(e.pointerId); seek(barTime(e)); });
+bar.addEventListener('pointermove', e => {
+  const t = barTime(e), tip = $('#tip');
+  tip.textContent = `${fmt(t)} · ${chapters[chapterAt(t)].title}`;
+  tip.style.left = `${(t / DUR) * 100}%`;
+  if (dragging) seek(t);
+});
+bar.addEventListener('pointerup', () => { dragging = false; });
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.key !== ' ') return;
+  if (e.key === ' ') { e.preventDefault(); toggle(); }
+  else if (e.key === 'ArrowRight') next();
+  else if (e.key === 'ArrowLeft') prev();
+  else if (e.key === 'r' || e.key === 'R') { seek(0); setPlaying(true); }
+  else if (e.key === 's' || e.key === 'S') $('#chk-step').checked = !$('#chk-step').checked;
+  else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); }
+  else if (/^[1-9]$/.test(e.key) && parts.children[+e.key - 1]) parts.children[+e.key - 1].click();
+});
+
+// =====================================================================================
+// SELF-CHECK: run anim.audit() in the browser console, or from a browser-automation tool.
+// It returns {problems: [...]}; an empty list means every automatic check passed at this
+// window size. Run it at each window size you care about. It does not replace looking.
+// =====================================================================================
+function audit() {
+  const problems = [];
+  for (const s of missing) problems.push(`selector matches nothing: ${s}`);
+
+  // Captions: at most three lines, and the caption bar must keep one height so the stage never jumps.
+  const p = $('#cap-text'), box = $('#caption'), keep = p.innerHTML;
+  const lh = parseFloat(getComputedStyle(p).lineHeight), heights = new Set();
+  let maxLines = 0;
+  caps.forEach((c, i) => {
+    if (!c.html) return;
+    p.innerHTML = c.html;
+    const r = document.createRange(); r.selectNodeContents(p);
+    const lines = Math.round(r.getBoundingClientRect().height / lh);
+    maxLines = Math.max(maxLines, lines);
+    heights.add(box.offsetHeight);
+    if (lines > 3) problems.push(`caption runs to ${lines} lines (split it): "${p.textContent.slice(0, 60)}..."`);
+    const chEnd = chapters.map(q => q.start + q.dur).find(e => e > c.t + 1e-6);
+    const secs = Math.min(i + 1 < caps.length ? caps[i + 1].t : DUR, chEnd) - c.t;
+    if (secs > 20) problems.push(`caption stays up ${secs.toFixed(0)} s (split it, or give it a faster pace): "${p.textContent.slice(0, 60)}..."`);
+  });
+  p.innerHTML = keep;
+  if (heights.size > 1) problems.push(`caption bar changes height: ${[...heights].join(', ')} px`);
+
+  // Text must stay inside its card.
+  for (const card of document.querySelectorAll('#stage .card')) {
+    const bg = card.querySelector(':scope > .bg');
+    if (!bg) continue;
+    const b = bg.getBBox();
+    for (const t of card.querySelectorAll('text')) {
+      if (t.closest('.card') !== card || t.closest('.pk, .chip, .dcard, [data-x]')) continue;
+      const r = t.getBBox();
+      if (r.width && (r.x + r.width > b.x + b.width - 6 || r.x < b.x + 4 || r.y + r.height > b.y + b.height - 2)) {
+        problems.push(`text spills out of ${card.id || 'a card'}: "${t.textContent.trim().slice(0, 40)}"`);
+      }
+    }
+  }
+
+  // The title block must fit above the caption bar, and the controls on one row.
+  const title = $('#title');
+  if (title) {
+    const T0 = T;
+    seek(chapters[0].start + chapters[0].dur - .05);
+    const gap = box.getBoundingClientRect().top - title.getBoundingClientRect().bottom;
+    if (gap < 0) problems.push(`title block overlaps the caption bar by ${Math.round(-gap)} px`);
+    seek(T0);
+  }
+  const ctrl = $('#controls');
+  if (ctrl.scrollWidth > ctrl.clientWidth) problems.push('controls overflow their row');
+
+  return {viewport: `${innerWidth}x${innerHeight}`, duration: fmt(DUR), chapters: chapters.length, captions: caps.filter(c => c.html).length, maxCaptionLines: maxLines, problems};
+}
+
+// anim.stops: one moment per chapter, just before it ends, when everything that chapter adds is on screen.
+// Seek to each and look.
+window.anim = {
+  seek, chapters, caps, duration: DUR, audit,
+  play: () => setPlaying(true), pause: () => setPlaying(false),
+  stops: chapters.map(c => ({title: c.title, t: +(c.start + c.dur - .1).toFixed(2)})),
+};
+const m = location.hash.match(/chapter-(\d+)/);          // page.html#chapter-3 opens at chapter 3
+seek(m ? chapters[Math.min(chapters.length - 1, +m[1])].start + .001 : 0);
+requestAnimationFrame(now => { lastNow = now; requestAnimationFrame(frame); });
+if (!/paused/.test(location.search)) setTimeout(() => setPlaying(true), 700);   // page.html?paused does not auto-play
+})();
+</script>
+</body>
+</html>
